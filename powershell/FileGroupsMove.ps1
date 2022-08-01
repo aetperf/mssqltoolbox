@@ -1,13 +1,14 @@
-
 <#
-    Name:			Anthony E. Nocentino aen@centinosystems.com
-    Date:			04/28/2015
+    Name:            Anthony E. Nocentino aen@centinosystems.com
+    Date:            04/28/2015
     Name:           Romain Ferraton romain.ferraton [chez] architecture-performance.fr
-    Description:	Script to move SQL Server data between filegroups
+    Description: Script to move SQL Server data between filegroups
     
-    Notes:			Does not migrate the following 
-        			Partitioned tables
-        			LOB objects
+     Prerequisites   For powershell 7  : Install-Module -Name SqlServer -RequiredVersion 21.1.18256
+     
+    Notes:           Does not migrate the following 
+                     Partitioned tables
+                     LOB objects
     Notes:          Steps :
                     Step 1 : List objects to rebuild
                     Step 2 : disable non-clustered indexes
@@ -16,7 +17,13 @@
                     Step 5 : Rebuild Non-Clustered indexes into the Target Filegroup
 #>
 
-# .\FileGroupsMove.ps1 -server "." -dbName "DWHRIVAGE_NEW" -doWork $FALSE -onlineOpt $FALSE -tablesToMove "*" -schemaToMove "*" -TargetfileGroup "SECONDARY"
+# simulation 
+#.\FileGroupsMove.ps1 -server ".\DEV" -dbName "DWH_CORP_FIN" -doWork $FALSE -onlineOpt $FALSE -tablesToMove "*" -schemaToMove "*" -TargetfileGroup "SECONDARY"
+#
+# run
+# .\FileGroupsMove.ps1 -server ".\DEV" -dbName "DWH_CORP_FIN" -doWork $TRUE -onlineOpt $FALSE -tablesToMove "*" -schemaToMove "*" -TargetfileGroup "SECONDARY"
+
+
 param 
 (
     [Parameter(Mandatory)] [string] $server = ".",
@@ -27,7 +34,7 @@ param
     [Parameter(Mandatory)] [string] $schemaToMove = "*",
     [Parameter(Mandatory)] [string] $SourcefileGroup = "*",
     [Parameter(Mandatory)] [string] $TargetfileGroup = "SECONDARY"
-		
+          
 )
 Write-host "Parameters======================================================================="
 Write-host "Server = ${server}"
@@ -36,12 +43,12 @@ Write-host "doWork = ${doWork}"
 Write-host "onlineOpt = ${onlineOpt}"
 Write-host "tablesToMove = ${tablesToMove}"
 Write-host "schemaToMove = ${schemaToMove}"
+Write-host "SourcefileGroup = ${SourcefileGroup}"
 Write-host "TargetfileGroup = ${TargetfileGroup}"
 Write-host "Parameters======================================================================="
 
 
 [System.Reflection.Assembly]::LoadWithPartialName("Microsoft.SqlServer.SMO")  #| out-null
-
 
 $sqlServer = New-Object ('Microsoft.SqlServer.Management.Smo.Server') -argumentlist $server
 $db = $sqlServer.Databases | Where-Object { $_.Name -eq $dbName }
@@ -124,7 +131,7 @@ if ($confirmation -ne 'y') {
 #Deactivate NonClusteredToMove
 foreach ( $index in $indexesNonClusteredToMove ) {
     try {
-        Write-Output ('Deactivate Non clustered index: ' + $index.Name)
+        Write-Output ('Deactivate Non clustered index: ' + $index.Name + 'on ' +$index.Parent.Name)
         
         if ( $doWork -eq $TRUE ) {
             $index.Disable()
@@ -139,7 +146,7 @@ foreach ( $index in $indexesNonClusteredToMove ) {
 # rebuild clustered index
 foreach ( $index in $indexesClusteredToMove ) {
     try {
-        Write-Output ('Moving: ' + $index.Name)
+        Write-Output ('Moving: ' + $index.Name + ' on ' +$index.Parent.Name)
         $index.FileGroup = $TargetfileGroup
 
         if ( $doWork -eq $TRUE ) {
@@ -148,7 +155,7 @@ foreach ( $index in $indexesClusteredToMove ) {
         }
     }
     catch {
-        Write-Output ('Failed moving index ' + $index + ' to ' + $TargetfileGroup + ' ' + $error[0].Exception.InnerException )
+        Write-Output ('Failed moving index ' + $index + 'on ' +$index.Parent.Name + ' to ' + $TargetfileGroup + ' ' + $error[0].Exception.InnerException )
         return
     }
 }#end for each index
@@ -191,7 +198,7 @@ foreach ($table in $heapsToMove) {
         catch {
             Write-Output('Failed moving heap: ' + $table + ' to ' + $TargetfileGroup + ' ' + $error[0].Exception.InnerException )
             Write-Output('Remove any Tempory indexes created')
-            return
+            #return
         }
     }
     else {
